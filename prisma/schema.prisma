@@ -1,0 +1,422 @@
+// APPZ WASH - Prisma Multi-Tenant Relational Schema
+// PostgreSQL 16+ Engine with logical tenant_id isolation
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------------
+
+enum SubscriptionPlan {
+  BASIC      // 1 Sede, funciones esenciales
+  PRO        // Multi-sede, reportes avanzados, alertas WhatsApp
+  ENTERPRISE // Franquicias y cadenas de lavaderos
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+enum UserRole {
+  SUPER_ADMIN // Global APPZ PLAY
+  TENANT_OWNER // Dueño del lavadero
+  MANAGER      // Administrador de sede
+  CASHIER      // Cajero / Recepción
+  WASHER       // Operario / Lavador
+}
+
+enum CommissionType {
+  PERCENTAGE // Porcentaje sobre el valor del servicio
+  FIXED      // Monto fijo en pesos/moneda local
+}
+
+enum WashOrderStatus {
+  WAITING    // En Espera
+  IN_WASH    // En Lavado
+  DETAILING  // Secado / Detallado
+  READY      // Listo para entrega
+  DELIVERED  // Entregado / Cobrado
+  CANCELLED  // Cancelado
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIAL
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH           // Efectivo
+  TRANSFER_NEQUI // Nequi
+  TRANSFER_DAVIPLATA // Daviplata
+  CARD           // Tarjeta Débito / Crédito
+  MIXED          // Mixto (Efectivo + Transferencia)
+  PENDING        // Por cobrar al entregar
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashTransactionType {
+  INCOME  // Ingreso manual o venta
+  EXPENSE // Egreso / Pago a proveedores / Adelantos
+}
+
+// -------------------------------------------------------------
+// MODELOS MULTI-TENANT
+// -------------------------------------------------------------
+
+model Tenant {
+  id              String            @id @default(uuid())
+  slug            String            @unique
+  name            String
+  nitRut          String?
+  phone           String?
+  email           String?
+  address         String?
+  city            String?
+  logoUrl         String?
+  plan            SubscriptionPlan  @default(BASIC)
+  status          TenantStatus      @default(TRIAL)
+  trialEndsAt     DateTime?
+  subscriptionDue DateTime?
+  currency        String            @default("COP")
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  users              User[]
+  washers            Washer[]
+  vehicleCategories  VehicleCategory[]
+  services           Service[]
+  serviceRates       ServiceRate[]
+  washOrders         WashOrder[]
+  commissionRecords  CommissionRecord[]
+  commissionSettlements CommissionSettlement[]
+  washerAdvances     WasherAdvance[]
+  cashSessions       CashSession[]
+  cashTransactions   CashTransaction[]
+  storeProducts      StoreProduct[]
+  storeSales         StoreSale[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  tenantId     String?
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         UserRole  @default(CASHIER)
+  active       Boolean   @default(true)
+  phone        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  cashSessions CashSession[]
+  settledSettlements CommissionSettlement[]
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Washer {
+  id                     String         @id @default(uuid())
+  tenantId               String
+  tenant                 Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name                   String
+  documentId             String?
+  phone                  String?
+  avatarUrl              String?
+  commissionType         CommissionType @default(PERCENTAGE)
+  defaultCommissionValue Float          @default(40.0) // 40% default or fixed amount
+  active                 Boolean        @default(true)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  assignedOrders     WashOrder[]
+  commissionRecords  CommissionRecord[]
+  commissionSettlements CommissionSettlement[]
+  washerAdvances     WasherAdvance[]
+
+  @@index([tenantId])
+  @@map("washers")
+}
+
+model VehicleCategory {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String   // Moto, Sedán, SUV / Camioneta, Camión
+  code        String   // MOTO, CAR, SUV, HEAVY
+  icon        String?  // bike, car, truck
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  serviceRates ServiceRate[]
+  washOrders   WashOrder[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("vehicle_categories")
+}
+
+model Service {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name             String   // Lavado Básico, Lavado General, Polichado, etc.
+  description      String?
+  category         String   @default("LAVADO") // LAVADO, ESTETICA, EXTRA
+  estimatedMinutes Int      @default(30)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  serviceRates   ServiceRate[]
+  orderItems     WashOrderItem[]
+
+  @@index([tenantId])
+  @@map("services")
+}
+
+model ServiceRate {
+  id                String          @id @default(uuid())
+  tenantId          String
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceId         String
+  service           Service         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  vehicleCategoryId String
+  vehicleCategory   VehicleCategory @relation(fields: [vehicleCategoryId], references: [id], onDelete: Cascade)
+  price             Float           // Precio cobrado al cliente
+  commissionType    CommissionType  @default(PERCENTAGE)
+  commissionValue   Float           // 40 (%) o 12000 (monto fijo)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([tenantId, serviceId, vehicleCategoryId])
+  @@index([tenantId])
+  @@map("service_rates")
+}
+
+model WashOrder {
+  id                    String          @id @default(uuid())
+  orderNumber           Int             @default(autoincrement())
+  tenantId              String
+  tenant                Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  washerId              String?
+  washer                Washer?         @relation(fields: [washerId], references: [id], onDelete: SetNull)
+  vehicleCategoryId     String
+  vehicleCategory       VehicleCategory @relation(fields: [vehicleCategoryId], references: [id], onDelete: Restrict)
+
+  plate                 String          // Placa
+  customerName          String?
+  customerPhone         String?
+  notes                 String?
+  preExistingDamage     String?         // Rayones, abolladuras reportadas al recibir
+  status                WashOrderStatus @default(WAITING)
+
+  totalAmount           Float           @default(0.0)
+  washerCommissionTotal Float           @default(0.0)
+  paymentStatus         PaymentStatus   @default(PENDING)
+  paymentMethod         PaymentMethod   @default(PENDING)
+  paymentReference      String?         // Comprobante Nequi / Transf
+
+  entryTime             DateTime        @default(now())
+  washStartTime         DateTime?
+  readyTime             DateTime?
+  exitTime              DateTime?
+  cashSessionId         String?
+  cashSession           CashSession?    @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  items                 WashOrderItem[]
+  commissionRecords     CommissionRecord[]
+  cashTransactions      CashTransaction[]
+
+  @@index([tenantId, plate])
+  @@index([tenantId, status])
+  @@map("wash_orders")
+}
+
+model WashOrderItem {
+  id              String    @id @default(uuid())
+  washOrderId     String
+  washOrder       WashOrder @relation(fields: [washOrderId], references: [id], onDelete: Cascade)
+  serviceId       String
+  service         Service   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  serviceName     String
+  price           Float
+  commissionType  CommissionType
+  commissionValue Float     // Valor calculado final de comisión para este item
+
+  createdAt       DateTime  @default(now())
+
+  @@map("wash_order_items")
+}
+
+model CommissionRecord {
+  id             String    @id @default(uuid())
+  tenantId       String
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  washerId       String
+  washer         Washer    @relation(fields: [washerId], references: [id], onDelete: Cascade)
+  washOrderId    String
+  washOrder      WashOrder @relation(fields: [washOrderId], references: [id], onDelete: Cascade)
+  amount         Float     // Comisión ganada
+  isSettled      Boolean   @default(false)
+  settlementId   String?
+  settlement     CommissionSettlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now())
+
+  @@index([tenantId, washerId, isSettled])
+  @@map("commission_records")
+}
+
+model CommissionSettlement {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  washerId        String
+  washer          Washer    @relation(fields: [washerId], references: [id], onDelete: Cascade)
+  totalEarned     Float     // Total comisiones generadas en el período
+  deductionsTotal Float     @default(0.0) // Descuentos / adelantos
+  netPaid         Float     // Valor neto pagado
+  notes           String?
+  settledAt       DateTime  @default(now())
+  settledByUserId String?
+  settledByUser   User?     @relation(fields: [settledByUserId], references: [id], onDelete: SetNull)
+
+  commissionRecords CommissionRecord[]
+  advances          WasherAdvance[]
+
+  @@index([tenantId, washerId])
+  @@map("commission_settlements")
+}
+
+model WasherAdvance {
+  id           String    @id @default(uuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  washerId     String
+  washer       Washer    @relation(fields: [washerId], references: [id], onDelete: Cascade)
+  amount       Float
+  reason       String?   // Adelanto de nómina, almuerzo, implementos
+  date         DateTime  @default(now())
+  isDeducted   Boolean   @default(false)
+  settlementId String?
+  settlement   CommissionSettlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, washerId, isDeducted])
+  @@map("washer_advances")
+}
+
+model CashSession {
+  id                   String            @id @default(uuid())
+  tenantId             String
+  tenant               Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  initialCash          Float             // Base de caja
+  finalCashCalculated  Float?            // Ventas en efectivo esperadas
+  finalCashActual      Float?            // Conteo físico ingresado por el cajero (Arqueo ciego)
+  difference           Float?            // Sobrante (+) o Faltante (-)
+  status               CashSessionStatus @default(OPEN)
+  notes                String?
+  openedAt             DateTime          @default(now())
+  closedAt             DateTime?
+
+  washOrders           WashOrder[]
+  transactions         CashTransaction[]
+  storeSales           StoreSale[]
+
+  @@index([tenantId, status])
+  @@map("cash_sessions")
+}
+
+model CashTransaction {
+  id            String              @id @default(uuid())
+  tenantId      String
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashSessionId String
+  cashSession   CashSession         @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
+  type          CashTransactionType
+  category      String              // VENTAS_LAVADO, VENTAS_TIENDA, PAGO_LAVADORES, GASTO_INSUMOS, OTRO
+  amount        Float
+  description   String
+  paymentMethod PaymentMethod       @default(CASH)
+  washOrderId   String?
+  washOrder     WashOrder?          @relation(fields: [washOrderId], references: [id], onDelete: SetNull)
+  createdAt     DateTime            @default(now())
+
+  @@index([tenantId, cashSessionId])
+  @@map("cash_transactions")
+}
+
+model StoreProduct {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String   // Gaseosa Coca Cola 400ml, Aromatizante Pino, Silicona
+  category    String   // BEBIDAS, SNACKS, ACCESORIOS_AUTOS
+  price       Float
+  cost        Float    @default(0.0)
+  stock       Int      @default(0)
+  barcode     String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  saleItems   StoreSaleItem[]
+
+  @@index([tenantId])
+  @@map("store_products")
+}
+
+model StoreSale {
+  id            String          @id @default(uuid())
+  tenantId      String
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashSessionId String?
+  cashSession   CashSession?    @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  totalAmount   Float
+  paymentMethod PaymentMethod   @default(CASH)
+  createdAt     DateTime        @default(now())
+
+  items         StoreSaleItem[]
+
+  @@index([tenantId])
+  @@map("store_sales")
+}
+
+model StoreSaleItem {
+  id             String       @id @default(uuid())
+  storeSaleId    String
+  storeSale      StoreSale    @relation(fields: [storeSaleId], references: [id], onDelete: Cascade)
+  storeProductId String
+  storeProduct   StoreProduct @relation(fields: [storeProductId], references: [id], onDelete: Restrict)
+  quantity       Int          @default(1)
+  unitPrice      Float
+  totalPrice     Float
+
+  @@map("store_sale_items")
+}
