@@ -1,14 +1,31 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Mail, Lock, Building, Phone, MapPin, Sparkles, CheckCircle2 } from 'lucide-react';
+import {
+  ShieldCheck,
+  Mail,
+  Lock,
+  Building,
+  Phone,
+  MapPin,
+  Sparkles,
+  CheckCircle2,
+  KeyRound,
+  ArrowRight,
+  ArrowLeft,
+  RotateCw,
+  Send,
+  AlertCircle,
+} from 'lucide-react';
 import { useApp } from '@/lib/app-context';
 
 export default function RegisterPage() {
   const router = useRouter();
   const { registerTenant } = useApp();
+
+  const [step, setStep] = useState<1 | 2>(1); // Step 1: Form, Step 2: OTP Verification
 
   const [formData, setFormData] = useState({
     businessName: '',
@@ -20,11 +37,58 @@ export default function RegisterPage() {
     plan: 'PRO',
   });
 
+  // OTP state
+  const [generatedOtp, setGeneratedOtp] = useState<string>('');
+  const [enteredOtp, setEnteredOtp] = useState<string>('');
+  const [otpError, setOtpError] = useState<string>('');
+  const [countdown, setCountdown] = useState<number>(30);
+  const [canResend, setCanResend] = useState<boolean>(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Countdown timer for resending code
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (step === 2 && countdown > 0) {
+      timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    } else if (countdown === 0) {
+      setCanResend(true);
+    }
+    return () => clearTimeout(timer);
+  }, [step, countdown]);
+
+  // Generate random 6-digit code
+  const generateAndSendCode = () => {
+    const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOtp(randomCode);
+    setCountdown(30);
+    setCanResend(false);
+    setOtpError('');
+  };
+
+  // Step 1: Submit form and send code
+  const handleInitiateRegistration = (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
+
+    setTimeout(() => {
+      generateAndSendCode();
+      setIsLoading(false);
+      setStep(2);
+    }, 600);
+  };
+
+  // Step 2: Validate code and create tenant
+  const handleVerifyOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpError('');
+
+    if (enteredOtp.trim() !== generatedOtp.trim()) {
+      setOtpError('El código ingresado es incorrecto. Por favor verifica e intenta nuevamente.');
+      return;
+    }
+
     setIsLoading(true);
 
     setTimeout(() => {
@@ -57,11 +121,36 @@ export default function RegisterPage() {
             <Sparkles className="w-3.5 h-3.5" /> APPZ PLAY SAAS PLATFORM
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-            Registra tu Autolavado en APPZ WASH
+            {step === 1 ? 'Registra tu Autolavado en APPZ WASH' : 'Verificación de Correo Electrónico'}
           </h1>
           <p className="text-slate-400 mt-2 text-sm">
-            Comienza con 15 días gratis de prueba. Controla cajas, comisiones y colas desde hoy.
+            {step === 1
+              ? 'Comienza con 15 días gratis de prueba. Controla cajas, comisiones y colas desde hoy.'
+              : `Hemos enviado un código de seguridad de 6 dígitos a ${formData.email}`}
           </p>
+
+          {/* Stepper pills */}
+          <div className="flex items-center justify-center gap-3 mt-4">
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                step === 1
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+              }`}
+            >
+              <span>1. Datos del Lavadero</span>
+            </div>
+            <div className="w-6 h-0.5 bg-slate-800" />
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                step === 2
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                  : 'bg-slate-900 text-slate-500 border border-slate-800'
+              }`}
+            >
+              <span>2. Validación de Correo</span>
+            </div>
+          </div>
         </div>
 
         {/* Card */}
@@ -71,13 +160,14 @@ export default function RegisterPage() {
               <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-500/30 animate-bounce">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">¡Lavadero Creado Exitosamente!</h3>
+              <h3 className="text-xl font-bold text-white mb-2">¡Correo Verificado y Lavadero Creado!</h3>
               <p className="text-slate-400 text-sm">
                 Inicializando espacio de trabajo para <strong className="text-blue-400">{formData.businessName}</strong>...
               </p>
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-5">
+          ) : step === 1 ? (
+            /* STEP 1: FORMULARIO DE DATOS */
+            <form onSubmit={handleInitiateRegistration} className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Nombre del Negocio */}
                 <div className="col-span-2">
@@ -133,7 +223,7 @@ export default function RegisterPage() {
                 {/* Email */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    Correo Electrónico *
+                    Correo Electrónico (Para Validación) *
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
@@ -184,18 +274,19 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* Botón de Enviar */}
+              {/* Botón de Enviar a Validación */}
               <button
                 type="submit"
                 disabled={isLoading}
                 className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/20 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isLoading ? (
-                  <span>Creando tu cuenta SaaS...</span>
+                  <span>Generando código de seguridad...</span>
                 ) : (
                   <>
-                    <ShieldCheck className="w-5 h-5" />
-                    <span>Crear Lavadero y Comenzar Prueba de 15 Días</span>
+                    <Send className="w-4 h-4" />
+                    <span>Continuar y Enviar Código al Correo</span>
+                    <ArrowRight className="w-4 h-4" />
                   </>
                 )}
               </button>
@@ -207,6 +298,89 @@ export default function RegisterPage() {
                     Iniciar Sesión
                   </Link>
                 </span>
+              </div>
+            </form>
+          ) : (
+            /* STEP 2: VERIFICACIÓN DEL CÓDIGO OTP */
+            <form onSubmit={handleVerifyOtp} className="space-y-6">
+              {/* Notificación informativa simulada de correo para testing */}
+              <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs flex items-start gap-3">
+                <Mail className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-white mb-1">
+                    Código de verificación enviado a <span className="text-blue-400">{formData.email}</span>
+                  </p>
+                  <p className="text-slate-300">
+                    Tu código de seguridad de 6 dígitos es:{' '}
+                    <span className="font-mono font-bold text-sm text-yellow-300 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-400/30 tracking-widest">
+                      {generatedOtp}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {otpError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{otpError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 text-center">
+                  Ingresa el código de 6 dígitos
+                </label>
+                <div className="relative max-w-xs mx-auto">
+                  <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                  <input
+                    type="text"
+                    maxLength={6}
+                    required
+                    placeholder="000000"
+                    value={enteredOtp}
+                    onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 text-center font-mono text-2xl tracking-[0.5em] placeholder:tracking-normal placeholder-slate-700 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Botones de acción */}
+              <div className="space-y-3">
+                <button
+                  type="submit"
+                  disabled={isLoading || enteredOtp.length !== 6}
+                  className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold rounded-xl shadow-lg shadow-emerald-500/20 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isLoading ? (
+                    <span>Validando y creando empresa...</span>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-5 h-5" />
+                      <span>Verificar Código y Activar Empresa</span>
+                    </>
+                  )}
+                </button>
+
+                <div className="flex items-center justify-between text-xs text-slate-400 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Cambiar correo o datos</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!canResend}
+                    onClick={generateAndSendCode}
+                    className="hover:text-blue-400 disabled:opacity-40 disabled:hover:text-slate-400 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" />
+                    <span>{canResend ? 'Reenviar código' : `Reenviar en ${countdown}s`}</span>
+                  </button>
+                </div>
               </div>
             </form>
           )}
