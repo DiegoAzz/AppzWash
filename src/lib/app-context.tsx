@@ -12,6 +12,7 @@ import {
   WasherAdvance,
   CashSession,
   StoreProduct,
+  TenantRecord,
 } from './types';
 import {
   INITIAL_ORDERS,
@@ -24,9 +25,47 @@ import {
   INITIAL_STORE_PRODUCTS,
 } from './mock-data';
 
+export const INITIAL_TENANTS: TenantRecord[] = [
+  {
+    id: 'autolavado-el-parche',
+    name: 'AutoLavado El Parche VIP',
+    ownerName: 'Diego Alejandro',
+    email: 'contacto@elparchevip.com',
+    phone: '+57 312 456 7890',
+    city: 'Medellín',
+    plan: 'PRO',
+    status: 'ACTIVE',
+    createdAt: '2026-09-01T00:00:00.000Z',
+  },
+  {
+    id: 'lavamotos-el-triunfo',
+    name: 'LavaMotos & Carros El Triunfo',
+    ownerName: 'Carlos Andrés Mendoza',
+    email: 'carlos@eltriunfowash.com',
+    phone: '+57 310 987 6543',
+    city: 'Bogotá',
+    plan: 'BASIC',
+    status: 'ACTIVE',
+    createdAt: '2026-09-15T00:00:00.000Z',
+  },
+  {
+    id: 'carwash-los-pinos',
+    name: 'CarWash & Spa Los Pinos',
+    ownerName: 'Mariana Valencia',
+    email: 'mariana@lospinos.com',
+    phone: '+57 318 555 4321',
+    city: 'Cali',
+    plan: 'PRO',
+    status: 'TRIAL',
+    createdAt: '2026-10-01T00:00:00.000Z',
+  },
+];
+
 interface AppContextType {
   tenantName: string;
   tenantNit: string;
+  currentTenantId: string;
+  availableTenants: TenantRecord[];
   orders: WashOrder[];
   washers: Washer[];
   categories: VehicleCategory[];
@@ -35,7 +74,17 @@ interface AppContextType {
   advances: WasherAdvance[];
   cashSession: CashSession;
   storeProducts: StoreProduct[];
-  // Actions
+  // Tenant actions
+  registerTenant: (data: {
+    businessName: string;
+    ownerName: string;
+    email: string;
+    phone: string;
+    city: string;
+  }) => TenantRecord;
+  switchTenant: (tenantId: string) => void;
+  toggleTenantStatus: (tenantId: string) => void;
+  // Order & Operations actions
   createOrder: (order: Omit<WashOrder, 'id' | 'orderNumber' | 'tenantId' | 'entryTime'>) => WashOrder;
   updateOrderStatus: (orderId: string, status: WashOrderStatus) => void;
   assignWasher: (orderId: string, washerId: string) => void;
@@ -49,10 +98,14 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'appzwash_state_v1';
+const STORAGE_KEY = 'appzwash_state_v2';
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [tenantName] = useState('AutoLavado El Parche VIP');
+  const [availableTenants, setAvailableTenants] = useState<TenantRecord[]>(INITIAL_TENANTS);
+  const [currentTenantId, setCurrentTenantId] = useState<string>('autolavado-el-parche');
+  
+  const currentTenant = availableTenants.find((t) => t.id === currentTenantId) || availableTenants[0];
+  const [tenantName, setTenantName] = useState(currentTenant?.name || 'AutoLavado El Parche VIP');
   const [tenantNit] = useState('901.482.391-4');
 
   const [orders, setOrders] = useState<WashOrder[]>(INITIAL_ORDERS);
@@ -65,12 +118,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [storeProducts] = useState<StoreProduct[]>(INITIAL_STORE_PRODUCTS);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  // Update tenantName when currentTenantId changes
+  useEffect(() => {
+    const t = availableTenants.find((x) => x.id === currentTenantId);
+    if (t) setTenantName(t.name);
+  }, [currentTenantId, availableTenants]);
+
   // Load from localStorage on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        if (parsed.availableTenants) setAvailableTenants(parsed.availableTenants);
+        if (parsed.currentTenantId) setCurrentTenantId(parsed.currentTenantId);
         if (parsed.orders) setOrders(parsed.orders);
         if (parsed.washers) setWashers(parsed.washers);
         if (parsed.advances) setAdvances(parsed.advances);
@@ -89,12 +150,73 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ orders, washers, advances, cashSession })
+        JSON.stringify({
+          availableTenants,
+          currentTenantId,
+          orders,
+          washers,
+          advances,
+          cashSession,
+        })
       );
     } catch (e) {
       console.warn('Error persisting state to localStorage:', e);
     }
-  }, [orders, washers, advances, cashSession, isLoaded]);
+  }, [availableTenants, currentTenantId, orders, washers, advances, cashSession, isLoaded]);
+
+  // Register a brand new Tenant
+  const registerTenant = (data: {
+    businessName: string;
+    ownerName: string;
+    email: string;
+    phone: string;
+    city: string;
+  }): TenantRecord => {
+    const slug = data.businessName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '') || `lavadero-${Date.now()}`;
+
+    const newTenant: TenantRecord = {
+      id: slug,
+      name: data.businessName,
+      ownerName: data.ownerName,
+      email: data.email,
+      phone: data.phone,
+      city: data.city,
+      plan: 'PRO',
+      status: 'TRIAL',
+      createdAt: new Date().toISOString(),
+    };
+
+    setAvailableTenants((prev) => [newTenant, ...prev]);
+    setCurrentTenantId(slug);
+    setTenantName(newTenant.name);
+
+    // Initial clean empty orders for the new tenant
+    setOrders([]);
+    setAdvances([]);
+
+    return newTenant;
+  };
+
+  const switchTenant = (tenantId: string) => {
+    const t = availableTenants.find((x) => x.id === tenantId);
+    if (t) {
+      setCurrentTenantId(t.id);
+      setTenantName(t.name);
+    }
+  };
+
+  const toggleTenantStatus = (tenantId: string) => {
+    setAvailableTenants((prev) =>
+      prev.map((t) => {
+        if (t.id !== tenantId) return t;
+        const nextStatus = t.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED';
+        return { ...t, status: nextStatus };
+      })
+    );
+  };
 
   const createOrder = (orderData: Omit<WashOrder, 'id' | 'orderNumber' | 'tenantId' | 'entryTime'>): WashOrder => {
     const nextNum = orders.reduce((max, o) => Math.max(max, o.orderNumber), 100) + 1;
@@ -102,7 +224,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ...orderData,
       id: `ord-${Date.now()}`,
       orderNumber: nextNum,
-      tenantId: 'autolavado-el-parche',
+      tenantId: currentTenantId,
       entryTime: new Date().toISOString(),
     };
 
@@ -230,6 +352,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setWashers(INITIAL_WASHERS);
     setAdvances(INITIAL_ADVANCES);
     setCashSession(INITIAL_CASH_SESSION);
+    setAvailableTenants(INITIAL_TENANTS);
+    setCurrentTenantId('autolavado-el-parche');
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch (e) {
@@ -242,6 +366,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       value={{
         tenantName,
         tenantNit,
+        currentTenantId,
+        availableTenants,
         orders,
         washers,
         categories,
@@ -250,6 +376,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         advances,
         cashSession,
         storeProducts,
+        registerTenant,
+        switchTenant,
+        toggleTenantStatus,
         createOrder,
         updateOrderStatus,
         assignWasher,

@@ -1,5 +1,19 @@
 export type UserRole = 'SUPER_ADMIN' | 'TENANT_OWNER' | 'MANAGER' | 'CASHIER' | 'WASHER';
 
+export type TenantStatus = 'TRIAL' | 'ACTIVE' | 'SUSPENDED';
+
+export interface TenantRecord {
+  id: string;
+  name: string;
+  ownerName: string;
+  email: string;
+  phone: string;
+  city: string;
+  plan: 'BASIC' | 'PRO' | 'ENTERPRISE';
+  status: TenantStatus;
+  createdAt: string;
+}
+
 export type WashOrderStatus = 'WAITING' | 'IN_WASH' | 'DETAILING' | 'READY' | 'DELIVERED' | 'CANCELLED';
 
 export type PaymentStatus = 'PENDING' | 'PAID' | 'PARTIAL' | 'REFUNDED';

@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useApp } from '@/lib/app-context';
-import { Sparkles, Plus, Wallet, ShieldCheck, RefreshCw, Car } from 'lucide-react';
+import { Sparkles, Plus, Wallet, ShieldCheck, RefreshCw, Building, ShieldAlert } from 'lucide-react';
 
 interface NavbarProps {
   onOpenExpressIntake?: () => void;
@@ -11,34 +11,54 @@ interface NavbarProps {
 }
 
 export function Navbar({ onOpenExpressIntake, onOpenCashModal }: NavbarProps) {
-  const { tenantName, cashSession, resetToSampleData } = useApp();
+  const {
+    tenantName,
+    cashSession,
+    resetToSampleData,
+    availableTenants,
+    currentTenantId,
+    switchTenant,
+  } = useApp();
 
-  const currentCashTotal = (cashSession.initialCash || 0) + (cashSession.calculatedCashSales || 0);
+  const currentCashTotal = (cashSession?.initialCash || 0) + (cashSession?.calculatedCashSales || 0);
 
   return (
-    <header className="sticky top-0 z-40 w-full glass-panel border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
       <div className="flex h-16 items-center justify-between px-4 sm:px-6">
-        {/* Brand & Tenant */}
+        {/* Brand & Tenant Switcher */}
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand-600 via-indigo-500 to-accent-cyan flex items-center justify-center text-white font-black text-xl shadow-lg shadow-brand-500/25 group-hover:scale-105 transition-transform">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-400 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-500/25 group-hover:scale-105 transition-transform">
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-display font-extrabold text-lg tracking-tight text-white">
-                  APPZ <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-cyan to-brand-400">WASH</span>
+                <span className="font-extrabold text-lg tracking-tight text-white">
+                  APPZ <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">WASH</span>
                 </span>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20">
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
                   SaaS Multi-Tenant
                 </span>
               </div>
-              <p className="text-xs text-slate-400 flex items-center gap-1 font-medium truncate max-w-[200px] sm:max-w-none">
-                <ShieldCheck className="h-3 w-3 text-emerald-400 shrink-0" />
-                {tenantName}
-              </p>
             </div>
           </Link>
+
+          {/* Quick Tenant Switcher Dropdown */}
+          <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-slate-800">
+            <Building className="w-3.5 h-3.5 text-slate-500" />
+            <select
+              value={currentTenantId}
+              onChange={(e) => switchTenant(e.target.value)}
+              className="bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-200 rounded-lg px-2.5 py-1 focus:outline-none focus:border-blue-500 cursor-pointer"
+              title="Cambiar de Lavadero"
+            >
+              {availableTenants.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.city})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Center / Stats (Hidden on small mobile) */}
@@ -51,9 +71,13 @@ export function Navbar({ onOpenExpressIntake, onOpenCashModal }: NavbarProps) {
             </span>
           </div>
 
-          <div className="text-xs px-2.5 py-1 rounded bg-slate-800/50 text-slate-400 border border-slate-700/50">
-            APPZ PLAY Engine 1.0
-          </div>
+          <Link
+            href="/admin"
+            className="text-xs px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-semibold transition-colors flex items-center gap-1.5"
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span>Super-Admin</span>
+          </Link>
         </div>
 
         {/* Actions */}
@@ -61,7 +85,7 @@ export function Navbar({ onOpenExpressIntake, onOpenCashModal }: NavbarProps) {
           <button
             onClick={resetToSampleData}
             title="Restablecer datos de prueba"
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 transition-colors border border-slate-800 text-xs flex items-center gap-1"
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 transition-colors border border-slate-800 text-xs flex items-center gap-1 cursor-pointer"
           >
             <RefreshCw className="h-4 w-4" />
             <span className="hidden xl:inline">Demo Reset</span>
@@ -70,7 +94,7 @@ export function Navbar({ onOpenExpressIntake, onOpenCashModal }: NavbarProps) {
           {onOpenCashModal && (
             <button
               onClick={onOpenCashModal}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 text-xs font-semibold transition-all hover:border-slate-600"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 text-xs font-semibold transition-all hover:border-slate-600 cursor-pointer"
             >
               <Wallet className="h-4 w-4 text-emerald-400" />
               <span className="hidden sm:inline">Arqueo de Caja</span>
@@ -80,7 +104,7 @@ export function Navbar({ onOpenExpressIntake, onOpenCashModal }: NavbarProps) {
           {onOpenExpressIntake && (
             <button
               onClick={onOpenExpressIntake}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-brand-600/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-blue-600/30 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
             >
               <Plus className="h-4 w-4" />
               <span>Nuevo Ingreso</span>
